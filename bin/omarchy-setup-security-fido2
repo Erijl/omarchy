@@ -113,11 +113,11 @@ if [[ -L $authfile || ( -e $authfile && ! -f $authfile ) ]]; then
 fi
 
 if [[ ! -f $authfile ]]; then
-  # check_fido2_hardware already read the device list, whose first field is the
-  # path. Piping it through head again would leave fido2-token writing into a
-  # closed pipe as soon as a second key is attached, and pipefail reports that
-  # SIGPIPE as a failure that set -e acts on.
-  device=${tokens%%:*}
+  # check_fido2_hardware already read the device list, whose first line starts
+  # with the path pamu2fcfg will register. NFC and PC/SC paths (nfc:..., pcsc://)
+  # contain colons of their own, so cut at the ": vendor=" that follows it.
+  device=${tokens%%$'\n'*}
+  device=${device%%: vendor=*}
 
   if ! device_info=$(fido2-token -I "$device"); then
     echo -e "\e[31m\nCouldn't read the FIDO2 key's capabilities. Replug it and try again.\e[0m"

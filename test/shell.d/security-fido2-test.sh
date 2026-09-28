@@ -21,6 +21,7 @@ setup_copy="$test_tmp/setup.sh"
 default_token_info='options: rk, up, noplat, clientPin, pinUvAuthToken'
 token_info=$default_token_info
 token_info_fails=0
+token_path=/dev/hidraw0
 mkdir -p "$stub_bin"
 
 cleanup() {
@@ -219,10 +220,11 @@ set -euo pipefail
 
 case "${1:-}" in
   -L)
-    printf '%s\n' '/dev/hidraw0: vendor=0x1050, product=0x0407 (Yubico YubiKey)'
+    printf '%s\n' "$TEST_TOKEN_PATH: vendor=0x1050, product=0x0407 (Yubico YubiKey)"
+    printf '%s\n' '/dev/hidraw9: vendor=0x349e, product=0x0022 (Token2 FIDO2)'
     ;;
   -I)
-    [[ ${2:-} == "/dev/hidraw0" ]] || exit 94
+    [[ ${2:-} == "$TEST_TOKEN_PATH" ]] || exit 94
     [[ $TEST_TOKEN_INFO_FAILS == "0" ]] || exit 1
     printf '%s\n' "$TEST_TOKEN_INFO"
     ;;
@@ -286,6 +288,7 @@ reset_run() {
   : >"$output"
   token_info=$default_token_info
   token_info_fails=0
+  token_path=/dev/hidraw0
   rm -rf "$authdir"
 }
 
@@ -300,7 +303,7 @@ invoke_setup() {
     TEST_LOG="$calls" TEST_MKTEMP_MODE="$mktemp_mode" TEST_PAMU_MODE="$pamu_mode" \
     TEST_PAMU_ARGS="$pamu_args" TEST_PAMU_TARGETS="$pamu_targets" TEST_STAGES="$stages" \
     TEST_TMP="$test_tmp" TEST_TOKEN_INFO="$token_info" \
-    TEST_TOKEN_INFO_FAILS="$token_info_fails" \
+    TEST_TOKEN_INFO_FAILS="$token_info_fails" TEST_TOKEN_PATH="$token_path" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
     bash "$setup_copy" </dev/null >"$output"
 }
@@ -597,3 +600,12 @@ grep -Fq "Couldn't read the FIDO2 key's capabilities" "$output" ||
 [[ ! -s $calls ]] ||
   fail "FIDO2 setup gives up on an unreadable key before it escalates" "$(cat "$calls")"
 pass "FIDO2 setup reports why it bailed when the key cannot be read"
+
+# NFC and PC/SC paths carry colons of their own, so the probe must take the whole
+# path from the list rather than stopping at its first colon.
+reset_run
+token_path=pcsc://slot0
+run_setup
+[[ $(cat "$pamu_args") == pamu2fcfg && -f $authfile ]] ||
+  fail "FIDO2 setup registers a key listed under a PC/SC path" "$(cat "$output")"
+pass "FIDO2 setup probes a key listed under a PC/SC path"
